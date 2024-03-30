@@ -53,7 +53,8 @@ class ParseCsvData(beam.DoFn):
 
 class FilterData(beam.DoFn):
     def process(self, element):
-        unsafe_following_distance_threshold = 10  # unsafe following distance in meters
+        unsafe_dhw_threshold = 10  # unsafe distance headway in meters
+        unsafe_thw_threshold = 3  # unsafe time headway in seconds
         high_relative_velocity_threshold = 5  # high relative velocity in m/s
         unsafe_acceleration_threshold = -2  # unsafe deceleration in m/s^2
 
@@ -68,7 +69,7 @@ class FilterData(beam.DoFn):
         relative_velocity_x = abs(float(row['xVelocity']) - float(row['precedingXVelocity']))
 
         # check if the vehicle is following too closely based on frontSightDistance
-        following_too_close = float(row['frontSightDistance']) <= unsafe_following_distance_threshold
+        following_too_close = float(row['dhw']) <= unsafe_dhw_threshold or float(row['thw']) <= unsafe_thw_threshold
 
         # check if the relative velocity along the x-axis is higher than the threshold
         high_relative_velocity = relative_velocity_x >= high_relative_velocity_threshold

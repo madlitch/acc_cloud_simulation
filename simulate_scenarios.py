@@ -72,7 +72,7 @@ def calculate_ttc(relative_distance, relative_velocity):
 def simulate_acc_behavior(scenario_data, dt=0.1, total_time=10):
     start = time.time()
     lead_vehicle = VehicleModel(scenario_data['x'], scenario_data['xVelocity'])
-    acc_vehicle = VehicleModel(scenario_data['x'] - scenario_data['frontSightDistance'],
+    acc_vehicle = VehicleModel(scenario_data['x'] - scenario_data['dhw'],
                                scenario_data['precedingXVelocity'])
 
     ttc_values = []

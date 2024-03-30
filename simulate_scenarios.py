@@ -3,6 +3,8 @@ from google.cloud.bigquery import SchemaField, Table
 import json
 import numpy as np
 import signal
+import logging
+import time
 
 topic_id = 'simulate-scenario'
 subscription_id = 'simulate-scenario-sub'
@@ -14,6 +16,9 @@ table_id = 'simulation_results'
 publisher = pubsub_v1.PublisherClient()
 subscriber = pubsub_v1.SubscriberClient()
 bigquery_client = bigquery.Client(project=project_id)
+logger = logging.getLogger(__name__)
+
+logging.basicConfig(filename='simulate_scenarios.log', level=logging.INFO)
 
 
 # create the simulation_results table
@@ -22,22 +27,22 @@ def ensure_bigquery_table_exists():
     table_ref = dataset_ref.table(table_id)
     try:
         bigquery_client.get_table(table_ref)
-        print("Table {} already exists.".format(table_id))
+        logger.info("Table {} already exists.".format(table_id))
     except Exception as e:
-        print("Table {} is not found. Creating now...".format(table_id))
+        logger.info("Table {} is not found. Creating now...".format(table_id))
         schema = [
             SchemaField("scenario_id", "INTEGER"),
-            SchemaField("frame", "INTEGER"),
             SchemaField("collision_avoided", "BOOL"),
             SchemaField("max_relative_distance", "FLOAT"),
             SchemaField("min_relative_distance", "FLOAT"),
             SchemaField("min_ttc", "FLOAT"),
             SchemaField("average_velocity_acc", "FLOAT"),
             SchemaField("average_velocity_lead", "FLOAT"),
+            SchemaField("simulation_time", "FLOAT"),
         ]
         table = Table(table_ref, schema=schema)
         table = bigquery_client.create_table(table)
-        print("Created table {}.{}.{}".format(table.project, table.dataset_id, table.table_id))
+        logger.info("Created table {}.{}.{}".format(table.project, table.dataset_id, table.table_id))
 
 
 ensure_bigquery_table_exists()
@@ -65,6 +70,7 @@ def calculate_ttc(relative_distance, relative_velocity):
 
 
 def simulate_acc_behavior(scenario_data, dt=0.1, total_time=10):
+    start = time.time()
     lead_vehicle = VehicleModel(scenario_data['x'], scenario_data['xVelocity'])
     acc_vehicle = VehicleModel(scenario_data['x'] - scenario_data['frontSightDistance'],
                                scenario_data['precedingXVelocity'])
@@ -77,7 +83,7 @@ def simulate_acc_behavior(scenario_data, dt=0.1, total_time=10):
     safe_ttc_threshold = 2
     collision_avoided = True  # assume collision is avoided initially
 
-    for time in np.arange(0, total_time + dt, dt):
+    for t in np.arange(0, total_time + dt, dt):
         relative_distance = lead_vehicle.state[0] - acc_vehicle.state[0]
         relative_velocity = lead_vehicle.state[1] - acc_vehicle.state[1]
         acc_acceleration = acc_controller(relative_distance, relative_velocity)
@@ -99,20 +105,22 @@ def simulate_acc_behavior(scenario_data, dt=0.1, total_time=10):
     average_velocity_acc = float(np.mean(velocities_acc))
     average_velocity_lead = float(np.mean(velocities_lead))
 
+    end = time.time()
+
     return {
-        'frame': scenario_data['frame'],
         'collision_avoided': collision_avoided,
         'max_relative_distance': max_relative_distance,
         'min_relative_distance': min_relative_distance,
         'min_ttc': None if min_ttc == np.inf else float(min_ttc),
         'average_velocity_acc': average_velocity_acc,
-        'average_velocity_lead': average_velocity_lead
+        'average_velocity_lead': average_velocity_lead,
+        'simulation_time': end - start
     }
 
 
 # callback Function for Pub/Sub Messages
 def callback(message):
-    print(f"Received message: {message}")
+    logger.info(f"Received message: {message}")
     scenario_data = json.loads(message.data)
 
     simulation_result = simulate_acc_behavior(scenario_data)
@@ -123,9 +131,9 @@ def callback(message):
     errors = bigquery_client.insert_rows_json(table_ref, rows_to_insert)
 
     if not errors:
-        print(f"Frame {scenario_data['frame']} simulation success, new rows added.")
+        logger.info(f"Frame {scenario_data['frame']} simulation success, new rows added.")
     else:
-        print("Encountered errors while inserting rows:", errors)
+        logger.error("Encountered errors while inserting rows:", errors)
 
     message.ack()
 
@@ -135,6 +143,7 @@ def listen():
     subscription_path = subscriber.subscription_path(project_id, subscription_id)
     streaming_pull_future = subscriber.subscribe(subscription_path, callback=callback)
     print(f"Listening for messages on {subscription_path}...\n")
+    logger.info(f"Listening for messages on {subscription_path}...\n")
 
     # wrap the subscriber in a 'with' block to automatically call close() when done
     with subscriber:
@@ -146,13 +155,13 @@ def listen():
             streaming_pull_future.result()  # block until the shutdown is complete
         except Exception as e:
             streaming_pull_future.cancel()  # trigger the shutdown on other exceptions
-            print(f"An exception occurred: {e}")
+            logger.info(f"An exception occurred: {e}")
             raise
 
 
 if __name__ == "__main__":
     def handler(signum, frame):
-        print("Signal handler called with signal", signum)
+        logger.info("Signal handler called with signal", signum)
         raise KeyboardInterrupt
 
 

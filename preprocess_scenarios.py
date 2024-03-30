@@ -11,11 +11,10 @@ table_id = 'acc_challenging_scenarios'
 
 class ParseCsvData(beam.DoFn):
     def process(self, element):
-        # Split the CSV line into a list. Assumes comma as delimiter.
+        # split the CSV line into a list. Assumes comma as delimiter.
         values = element.split(',')
 
-        # Assuming the CSV columns order matches the BigQuery schema order exactly.
-        # Convert each field to the correct type. If field is empty, set it to None.
+        # convert each field to the correct type. If field is empty, set it to None.
         try:
             parsed_values = {
                 'frame': int(values[0]) if values[0] else None,
@@ -45,7 +44,7 @@ class ParseCsvData(beam.DoFn):
                 'laneId': int(values[24]) if values[24] else None
             }
         except IndexError:
-            # Handle case where CSV row is shorter than expected
+            # handle case where CSV row is shorter than expected
             yield {}
             return
 
@@ -60,18 +59,19 @@ class FilterData(beam.DoFn):
 
         row = dict(element)
 
+        # skip rows where the precedingId is 0 (no vehicle ahead)
+        if int(row['precedingId']) == 0:
+            return
+
         # apply filtering criteria
         # compute the relative velocity along the x-axis
-        relative_velocity_x = float(row['xVelocity']) - float(row['precedingXVelocity'])
-
-        # calculate the absolute difference in velocity along the x-axis
-        relative_velocity_x_abs = abs(relative_velocity_x)
+        relative_velocity_x = abs(float(row['xVelocity']) - float(row['precedingXVelocity']))
 
         # check if the vehicle is following too closely based on frontSightDistance
         following_too_close = float(row['frontSightDistance']) <= unsafe_following_distance_threshold
 
         # check if the relative velocity along the x-axis is higher than the threshold
-        high_relative_velocity = relative_velocity_x_abs >= high_relative_velocity_threshold
+        high_relative_velocity = relative_velocity_x >= high_relative_velocity_threshold
 
         # check if the acceleration indicates a strong deceleration
         strong_deceleration = float(row['xAcceleration']) < unsafe_acceleration_threshold

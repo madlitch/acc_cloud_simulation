@@ -29,3 +29,6 @@ This project demonstrates a comprehensive workflow for simulating Adaptive Cruis
 - A Looker Studio report is created to visualize the outcomes of the ACC simulations, using the `simulation_results` table as a data source.
 - The report provides insights into how often the ACC system successfully avoided collisions, and other data.
 - It allows for easy analysis of ACC performance under different driving conditions.
+
+Looker Studio: https://lookerstudio.google.com/s/lA_BSgXXWsw
+Video Demo: https://drive.google.com/file/d/1dpNyOg-aozmjBi-JL6drXkvaOIBctmxN/view?usp=sharing
